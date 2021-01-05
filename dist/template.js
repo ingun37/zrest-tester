@@ -52,9 +52,11 @@ function makeRecursiveTemplateJSCode(srests) {
         return `fetch("${exports.hookDomain}", { method: "DELETE", });`;
     }
     else {
-        return `closet.viewer.loadSeparatedZRest(${JSON.stringify(srests[0])}, (x)=>{}).then(()=>{
+        return `
+        console.log("loading srest, #", ${srests.length})
+        closet.viewer.loadSeparatedZRest(${JSON.stringify(srests[0])}, (x)=>{}).then(()=>{
           return new Promise(done => {
-            setTimeout(done, 8000);
+            setTimeout(done, 10000);
           })
         }).then(()=>{
           return fetch("${exports.hookDomain}", {
