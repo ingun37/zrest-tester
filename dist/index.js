@@ -26,6 +26,7 @@ exports.testZrestLibrary = exports.testSrestLibrary = exports.lexicographic = ex
 const puppeteer_1 = __importDefault(require("puppeteer"));
 const page_request_emitter_1 = require("page-request-emitter");
 const E = __importStar(require("fp-ts/Either"));
+const Either_1 = require("fp-ts/Either");
 const A = __importStar(require("fp-ts/Array"));
 const D = __importStar(require("io-ts/Decoder"));
 const operators_1 = require("rxjs/operators");
@@ -51,10 +52,30 @@ const cutDataURLHead = (dataURL) => {
 const principleViewResponse = D.type({
     images: D.array(D.string),
 });
+function stopWhenError(oe) {
+    return new rxjs_1.Observable(subscriber => {
+        oe.subscribe({
+            next(either) {
+                if (!subscriber.closed) {
+                    subscriber.next(either);
+                    if (Either_1.isLeft(either)) {
+                        subscriber.complete();
+                    }
+                }
+            },
+            complete() {
+                subscriber.complete();
+            },
+            error(err) {
+                subscriber.error(err);
+            }
+        });
+    });
+}
 function streamScreenshots_browser(jsx, hookDomain) {
     return (browser) => {
         const eventsOE = page_request_emitter_1.streamNewPageEventsJSX(jsx)(browser, hookDomain);
-        return eventsOE.pipe(fp_ts_rxjs_1.observableEither.mapLeft(console.error), fp_ts_rxjs_1.observableEither.chain(([_, xxx]) => {
+        return stopWhenError(eventsOE).pipe(fp_ts_rxjs_1.observableEither.mapLeft(console.error), fp_ts_rxjs_1.observableEither.chain(([_, xxx]) => {
             switch (xxx._tag) {
                 case "RequestIntercept":
                     const principleViewBuffers = function_1.pipe(xxx.request.postData(), D.string.decode, E.map(JSON.parse), E.chain(principleViewResponse.decode), E.map(x => x.images.map(cutDataURLHead).map(base64ToBuffer)), E.mapLeft(console.error), E.sequence(A.array));
@@ -126,7 +147,10 @@ function fetchSrests_token(domain, styleIds) {
 }
 exports.fetchSrests_token = fetchSrests_token;
 function runWithBrowser(browserReadingTask) {
-    return TaskEither_1.bracket(TaskEither_1.tryCatchK(puppeteer_1.default.launch.bind(puppeteer_1.default), console.error)({ args: ["--no-sandbox", "--disable-web-security"] }), RTE.mapLeft(console.error)(browserReadingTask), (browser) => TaskEither_1.tryCatchK(() => browser.close(), console.error)());
+    return TaskEither_1.bracket(TaskEither_1.tryCatchK(puppeteer_1.default.launch.bind(puppeteer_1.default), console.error)({ args: ["--no-sandbox", "--disable-web-security"] }), RTE.mapLeft(console.error)(browserReadingTask), (browser) => {
+        console.log("Releasing browser ...");
+        return TaskEither_1.tryCatchK(() => browser.close(), console.error)();
+    });
 }
 exports.runWithBrowser = runWithBrowser;
 function answerStream(answersDir) {
