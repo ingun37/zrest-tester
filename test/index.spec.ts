@@ -2,16 +2,21 @@ import {
     fetchSrests_token,
     generateAndSaveSrestAnswers,
     generateAndSaveZrestAnswers,
+    runWithBrowser,
+    streamScreenshots_browser,
     testSrestLibrary,
     testZrestLibrary
 } from "../src";
 import * as E from "fp-ts/Either";
+import {isLeft} from "fp-ts/Either";
 import {resolve} from "path";
 import * as fs from "fs";
 import fse from "fs-extra";
 import {TestDataProvision} from "./provision-type";
 import {testDataProvision} from "./test-data-provision";
 import {spawnSync} from "child_process";
+import {errorTemplate} from "./test-template";
+import {toTaskEither} from "fp-ts-rxjs/lib/ObservableEither";
 
 const testData: TestDataProvision = testDataProvision;
 
@@ -102,3 +107,14 @@ test("zrest-impair", () => {
         }
     })
 }, 1000 * 60 * 10);
+
+test("stop when error test", () => {
+    const reader = streamScreenshots_browser(errorTemplate, "oeuidhtndiueuidhthdiueuidh");
+    const aaa = runWithBrowser(browser => {
+        return toTaskEither(reader(browser));
+    });
+    return aaa().then(either => {
+        console.log(either);
+        expect(isLeft(either)).toBeTruthy();
+    })
+}, 1000 * 60)

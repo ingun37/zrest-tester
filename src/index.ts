@@ -2,12 +2,13 @@ import puppeteer, {Browser} from "puppeteer";
 
 import {streamNewPageEventsJSX} from "page-request-emitter";
 import * as E from "fp-ts/Either";
+import {Either, isLeft} from "fp-ts/Either";
 import * as A from "fp-ts/Array";
 import * as D from "io-ts/Decoder";
 
 import {concatMap, map, reduce, toArray} from "rxjs/operators";
 import {pipe} from "fp-ts/function";
-import {from, zip} from "rxjs";
+import {from, Observable, zip} from "rxjs";
 import fetch from "node-fetch";
 
 import {D_SRest, SRest} from "./types";
@@ -37,10 +38,31 @@ const principleViewResponse = D.type({
     images: D.array(D.string),
 });
 
+function stopWhenError<_E, _A>(oe: ObservableEither<_E, _A>): ObservableEither<_E, _A> {
+    return new Observable<Either<_E, _A>>(subscriber => {
+        oe.subscribe({
+            next(either) {
+                if (!subscriber.closed) {
+                    subscriber.next(either);
+                    if (isLeft(either)) {
+                        subscriber.complete();
+                    }
+                }
+            },
+            complete() {
+                subscriber.complete();
+            },
+            error(err) {
+                subscriber.error(err);
+            }
+        })
+    })
+}
+
 export function streamScreenshots_browser(jsx: JSX.Element, hookDomain: string): ReaderObservableEither<Browser, void, Buffer> {
     return (browser: Browser) => {
         const eventsOE = streamNewPageEventsJSX(jsx)(browser, hookDomain);
-        return eventsOE.pipe(
+        return stopWhenError(eventsOE).pipe(
             OE.mapLeft(console.error),
             OE.chain(([_, xxx]) => {
                 switch (xxx._tag) {
@@ -139,7 +161,10 @@ export function runWithBrowser<_E, _T>(browserReadingTask: ReaderTaskEither<Brow
     return bracket(
         tryCatchK(puppeteer.launch.bind(puppeteer), console.error)({args: ["--no-sandbox", "--disable-web-security"]}),
         RTE.mapLeft(console.error)(browserReadingTask),
-        (browser) => tryCatchK(() => browser.close(), console.error)()
+        (browser) => {
+            console.log("Releasing browser ...");
+            return tryCatchK(() => browser.close(), console.error)()
+        }
     )
 }
 
