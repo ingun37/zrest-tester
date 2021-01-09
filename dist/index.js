@@ -22,7 +22,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.testZrestLibrary = exports.testSrestLibrary = exports.lexicographic = exports.saveDebugImages = exports.runWithBrowser = exports.fetchSrests_token = exports.generateAndSaveZrestAnswers = exports.generateAndSaveSrestAnswers = exports.streamScreenshots_browser = void 0;
+exports.testZrestLibrary = exports.testSrestLibrary = exports.lexicographic = exports.saveDebugImages = exports.runWithBrowser = exports.generateAndSaveZrestAnswers = exports.generateAndSaveSrestAnswers = exports.streamScreenshots_browser = void 0;
 const puppeteer_1 = __importDefault(require("puppeteer"));
 const page_request_emitter_1 = require("page-request-emitter");
 const E = __importStar(require("fp-ts/Either"));
@@ -44,6 +44,8 @@ const template_1 = require("./template");
 const child_process_1 = require("child_process");
 const ObservableEither_1 = require("fp-ts-rxjs/lib/ObservableEither");
 const Tup = __importStar(require("fp-ts/Tuple"));
+const fp_ts_1 = require("fp-ts");
+const Option_1 = require("fp-ts/Option");
 const base64ToBuffer = (encoding) => Buffer.from(encoding, 'base64');
 const cutDataURLHead = (dataURL) => {
     const header = "data:image/png;base64,";
@@ -73,19 +75,25 @@ function stopWhenError(oe) {
     });
 }
 function streamScreenshots_browser(jsx, hookDomain) {
-    return (browser) => {
-        const eventsOE = page_request_emitter_1.streamNewPageEventsJSX(jsx)(browser, hookDomain);
-        return stopWhenError(eventsOE).pipe(fp_ts_rxjs_1.observableEither.mapLeft(console.error), fp_ts_rxjs_1.observableEither.chain(([_, xxx]) => {
+    const pageurl = page_request_emitter_1.createTmpHTMLURL_JSX(jsx);
+    return function_1.pipe(page_request_emitter_1.createNewPage(), fp_ts_1.reader.map(ObservableEither_1.fromTaskEither), fp_ts_1.reader.map(ob => {
+        return function_1.pipe(ob, fp_ts_rxjs_1.observableEither.chain(page => {
+            const events = page_request_emitter_1.streamPageEvents(page, pageurl)({
+                filter: r => r.url().startsWith(hookDomain),
+                alterResponse: () => Option_1.none
+            });
+            return stopWhenError(events);
+        }), fp_ts_rxjs_1.observableEither.mapLeft(x => x), fp_ts_rxjs_1.observableEither.chain((xxx) => {
             switch (xxx._tag) {
                 case "RequestIntercept":
-                    const principleViewBuffers = function_1.pipe(xxx.request.postData(), D.string.decode, E.map(JSON.parse), E.chain(principleViewResponse.decode), E.map(x => x.images.map(cutDataURLHead).map(base64ToBuffer)), E.mapLeft(console.error), E.sequence(A.array));
+                    const principleViewBuffers = function_1.pipe(xxx.request.postData(), D.string.decode, E.map(JSON.parse), E.chain(principleViewResponse.decode), E.map(x => x.images.map(cutDataURLHead).map(base64ToBuffer)), E.mapLeft(x => x), E.sequence(A.array));
                     return rxjs_1.from(principleViewBuffers);
                 case "Log":
                     console.log("Log from page", xxx.message);
                     return rxjs_1.from([]);
             }
         }));
-    };
+    }));
 }
 exports.streamScreenshots_browser = streamScreenshots_browser;
 function streamSrestScreenshots_browser(srests, libURL) {
@@ -106,9 +114,14 @@ function writeBuffersInLexicographicOrder(destination, buffers) {
     }, E.right(mkNewDir(destination))));
     return ObservableEither_1.toTaskEither(writeTask);
 }
-function generateAndSaveSrestAnswers(styleIds, token, destination, liburl, domain) {
+const fetchSrest = (url) => () => node_fetch_1.default(url).then(x => x.text()).then(JSON.parse).then(types_1.D_SRest.decode);
+function fetchSrests(urls) {
+    const srestOb = rxjs_1.from(urls).pipe(operators_1.map(fetchSrest), operators_1.concatMap(ObservableEither_1.fromTaskEither), operators_1.toArray(), operators_1.map(fp_ts_1.either.sequenceArray));
+    return ObservableEither_1.toTaskEither(srestOb);
+}
+function generateAndSaveSrestAnswers(sresturls, destination, liburl) {
     return runWithBrowser(browser => {
-        return function_1.pipe(fetchSrests_token(domain, styleIds)(token), TE.chain(srests => {
+        return function_1.pipe(fetchSrests(sresturls), TE.chain(srests => {
             const answerBufferOE = streamSrestScreenshots_browser(srests, liburl)(browser);
             return writeBuffersInLexicographicOrder(destination, answerBufferOE);
         }));
@@ -130,22 +143,6 @@ function addSlash(str) {
         return str + '/';
     }
 }
-const SRestResponse = D.type({
-    isSeparated: D.boolean,
-    result: types_1.D_SRest
-});
-function fetchSrests_token(domain, styleIds) {
-    return (token) => {
-        const obe = rxjs_1.from(styleIds).pipe(operators_1.concatMap(styleId => node_fetch_1.default(addSlash(domain) + `api/styles/${styleId}/versions/1/zrest`, {
-            headers: {
-                "Authorization": "Bearer " + token,
-                "api-version": "2.0"
-            }
-        }).then(x => x.text()).then(JSON.parse).then(SRestResponse.decode).then(E.map(x => x.result))), operators_1.toArray(), operators_1.map(A.sequence(E.either)));
-        return fp_ts_rxjs_1.observableEither.toTaskEither(obe);
-    };
-}
-exports.fetchSrests_token = fetchSrests_token;
 function runWithBrowser(browserReadingTask) {
     return TaskEither_1.bracket(TaskEither_1.tryCatchK(puppeteer_1.default.launch.bind(puppeteer_1.default), console.error)({ args: ["--no-sandbox", "--disable-web-security"] }), RTE.mapLeft(console.error)(browserReadingTask), (browser) => {
         console.log("Releasing browser ...");
@@ -210,12 +207,11 @@ function compareResultsAndAnswers(resultEs, answersDir, debugImageDir) {
     const testResult = rxjs_1.zip(resultEs, answers).pipe(operators_1.map(Tup.sequence(E.either)), pairsOb => reduceTestResult(debugImageDir, pairsOb));
     return ObservableEither_1.toTaskEither(testResult);
 }
-function testSrestLibrary(liburl, domain, styleIds, answersDir, debugImageDir, token) {
+function testSrestLibrary(liburl, sresturls, answersDir, debugImageDir) {
     return runWithBrowser(browser => {
-        const rt = function_1.pipe(fetchSrests_token(domain, styleIds), RTE.chainTaskEitherK(srests => {
+        return function_1.pipe(fetchSrests(sresturls), fp_ts_1.taskEither.chain(srests => {
             return compareResultsAndAnswers(streamSrestScreenshots_browser(srests, liburl)(browser), answersDir, debugImageDir);
         }));
-        return rt(token);
     });
 }
 exports.testSrestLibrary = testSrestLibrary;

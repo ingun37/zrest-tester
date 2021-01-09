@@ -48,7 +48,7 @@ recurse([${literalize(zrestURLs)}])
     </div>
 );
 
-function makeRecursiveTemplateJSCode(srests: SRest[]): string {
+function makeRecursiveTemplateJSCode(srests: readonly SRest[]): string {
     if (srests.length === 0) {
         return `fetch("${hookDomain}", { method: "DELETE", });`
     } else {
@@ -71,7 +71,7 @@ function makeRecursiveTemplateJSCode(srests: SRest[]): string {
     }
 }
 
-function makeTemplateJSCode(libURL: U.URL, srests: SRest[]): string {
+function makeTemplateJSCode(libURL: U.URL, srests: readonly SRest[]): string {
     const initCode = `closet.viewer.init({
   element: "target",
   width: 512,
@@ -81,7 +81,7 @@ function makeTemplateJSCode(libURL: U.URL, srests: SRest[]): string {
     return initCode + makeRecursiveTemplateJSCode(srests);
 }
 
-export const templateSrest = (libURL: U.URL, srests: SRest[]) => (
+export const templateSrest = (libURL: U.URL, srests: readonly SRest[]) => (
     <div>
         <div id="target" style={{width: 512, height: 512}}/>
         <script type='text/javascript' src={libURL.toString()}/>

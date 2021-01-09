@@ -1,6 +1,6 @@
 import puppeteer, {Browser} from "puppeteer";
 
-import {streamNewPageEventsJSX} from "page-request-emitter";
+import {createNewPage, createTmpHTMLURL_JSX, streamPageEvents} from "page-request-emitter";
 import * as E from "fp-ts/Either";
 import {Either, isLeft} from "fp-ts/Either";
 import * as A from "fp-ts/Array";
@@ -13,19 +13,21 @@ import fetch from "node-fetch";
 
 import {D_SRest, SRest} from "./types";
 import * as TE from "fp-ts/TaskEither";
-import {bracket, tryCatchK} from "fp-ts/TaskEither";
+import {bracket, TaskEither, tryCatchK} from "fp-ts/TaskEither";
 import * as RTE from "fp-ts/ReaderTaskEither";
 import {ReaderTaskEither} from "fp-ts/ReaderTaskEither";
 
-import {observableEither as OE} from 'fp-ts-rxjs'
+import {observableEither} from 'fp-ts-rxjs'
 import {URL} from "url";
 import fs from "fs";
 import {resolve} from "path";
 import {hookDomain, templateSrest, templateZrest} from "./template";
 import {spawnSync} from "child_process";
-import {ObservableEither, toTaskEither} from "fp-ts-rxjs/lib/ObservableEither";
+import {fromTaskEither, ObservableEither, toTaskEither} from "fp-ts-rxjs/lib/ObservableEither";
 import * as Tup from "fp-ts/Tuple";
 import {ReaderObservableEither} from "fp-ts-rxjs/lib/ReaderObservableEither";
+import {either, reader, taskEither} from "fp-ts";
+import {none} from "fp-ts/Option";
 
 
 const base64ToBuffer = (encoding: string) => Buffer.from(encoding, 'base64');
@@ -59,34 +61,46 @@ function stopWhenError<_E, _A>(oe: ObservableEither<_E, _A>): ObservableEither<_
     })
 }
 
-export function streamScreenshots_browser(jsx: JSX.Element, hookDomain: string): ReaderObservableEither<Browser, void, Buffer> {
-    return (browser: Browser) => {
-        const eventsOE = streamNewPageEventsJSX(jsx)(browser, hookDomain);
-        return stopWhenError(eventsOE).pipe(
-            OE.mapLeft(console.error),
-            OE.chain(([_, xxx]) => {
-                switch (xxx._tag) {
-                    case "RequestIntercept":
-                        const principleViewBuffers = pipe(
-                            xxx.request.postData(),
-                            D.string.decode,
-                            E.map(JSON.parse),
-                            E.chain(principleViewResponse.decode),
-                            E.map(x => x.images.map(cutDataURLHead).map(base64ToBuffer)),
-                            E.mapLeft(console.error),
-                            E.sequence(A.array),
-                        );
-                        return from(principleViewBuffers)
-                    case "Log":
-                        console.log("Log from page", xxx.message);
-                        return from([])
-                }
-            }),
-        )
-    }
+export function streamScreenshots_browser(jsx: JSX.Element, hookDomain: string): ReaderObservableEither<Browser, unknown, Buffer> {
+    const pageurl = createTmpHTMLURL_JSX(jsx);
+    return pipe(
+        createNewPage(),
+        reader.map(fromTaskEither),
+        reader.map(ob => {
+            return pipe(
+                ob,
+                observableEither.chain(page => {
+                    const events = streamPageEvents(page, pageurl)({
+                        filter: r => r.url().startsWith(hookDomain),
+                        alterResponse: () => none
+                    });
+                    return stopWhenError(events);
+                }),
+                observableEither.mapLeft(x => x as unknown),
+                observableEither.chain((xxx) => {
+                    switch (xxx._tag) {
+                        case "RequestIntercept":
+                            const principleViewBuffers = pipe(
+                                xxx.request.postData(),
+                                D.string.decode,
+                                E.map(JSON.parse),
+                                E.chain(principleViewResponse.decode),
+                                E.map(x => x.images.map(cutDataURLHead).map(base64ToBuffer)),
+                                E.mapLeft(x => x as unknown),
+                                E.sequence(A.array),
+                            );
+                            return from(principleViewBuffers)
+                        case "Log":
+                            console.log("Log from page", xxx.message);
+                            return from([])
+                    }
+                }),
+            )
+        })
+    )
 }
 
-function streamSrestScreenshots_browser(srests: SRest[], libURL: URL) {
+function streamSrestScreenshots_browser(srests: readonly SRest[], libURL: URL) {
     const jsx = templateSrest(libURL, srests);
     return streamScreenshots_browser(jsx, hookDomain)
 }
@@ -109,10 +123,22 @@ function writeBuffersInLexicographicOrder<_E>(destination: string, buffers: Obse
     return toTaskEither(writeTask);
 }
 
-export function generateAndSaveSrestAnswers(styleIds: string[], token: string, destination: string, liburl: URL, domain: string) {
+const fetchSrest = (url: string): TaskEither<unknown, SRest> => () => fetch(url).then(x => x.text()).then(JSON.parse).then(D_SRest.decode);
+
+function fetchSrests(urls: string[]) {
+    const srestOb = from(urls).pipe(
+        map(fetchSrest),
+        concatMap(fromTaskEither),
+        toArray(),
+        map(either.sequenceArray),
+    )
+    return toTaskEither(srestOb)
+}
+
+export function generateAndSaveSrestAnswers(sresturls: string[], destination: string, liburl: URL) {
     return runWithBrowser(browser => {
         return pipe(
-            fetchSrests_token(domain, styleIds)(token),
+            fetchSrests(sresturls),
             TE.chain(srests => {
                 const answerBufferOE = streamSrestScreenshots_browser(srests, liburl)(browser);
                 return writeBuffersInLexicographicOrder(destination, answerBufferOE);
@@ -133,27 +159,6 @@ function addSlash(str: string): string {
         return str;
     } else {
         return str + '/';
-    }
-}
-
-const SRestResponse = D.type({
-    isSeparated: D.boolean,
-    result: D_SRest
-});
-
-export function fetchSrests_token(domain: string, styleIds: readonly string[]): ReaderTaskEither<string, any, SRest[]> {
-    return (token: string) => {
-        const obe = from(styleIds).pipe(
-            concatMap(styleId => fetch(addSlash(domain) + `api/styles/${styleId}/versions/1/zrest`, {
-                headers: {
-                    "Authorization": "Bearer " + token,
-                    "api-version": "2.0"
-                }
-            }).then(x => x.text()).then(JSON.parse).then(SRestResponse.decode).then(E.map(x => x.result))),
-            toArray(),
-            map(A.sequence(E.either))
-        );
-        return OE.toTaskEither(obe);
     }
 }
 
@@ -234,11 +239,11 @@ function compareResultsAndAnswers<_E>(resultEs: ObservableEither<_E, Buffer>, an
     return toTaskEither(testResult);
 }
 
-export function testSrestLibrary(liburl: URL, domain: string, styleIds: string[], answersDir: string, debugImageDir: string, token: string) {
+export function testSrestLibrary(liburl: URL, sresturls: string[], answersDir: string, debugImageDir: string) {
     return runWithBrowser(browser => {
-        const rt = pipe(
-            fetchSrests_token(domain, styleIds),
-            RTE.chainTaskEitherK(srests => {
+        return pipe(
+            fetchSrests(sresturls),
+            taskEither.chain(srests => {
                 return compareResultsAndAnswers(
                     streamSrestScreenshots_browser(srests, liburl)(browser),
                     answersDir,
@@ -246,7 +251,6 @@ export function testSrestLibrary(liburl: URL, domain: string, styleIds: string[]
                 );
             }),
         )
-        return rt(token);
     })
 }
 

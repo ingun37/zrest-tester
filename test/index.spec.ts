@@ -1,5 +1,4 @@
 import {
-    fetchSrests_token,
     generateAndSaveSrestAnswers,
     generateAndSaveZrestAnswers,
     runWithBrowser,
@@ -20,14 +19,10 @@ import {toTaskEither} from "fp-ts-rxjs/lib/ObservableEither";
 
 const testData: TestDataProvision = testDataProvision;
 
-test("toket", () => {
-    const promise = fetchSrests_token(testData.domain, testData.styleIds)(testData.token)();
-    return expect(promise.then(E.isRight)).resolves.toBeTruthy();
-}, 1000 * 60)
 
 const testAnswersDir = resolve(__dirname, "test-answers");
 test("save", () => {
-    const task = generateAndSaveSrestAnswers(testData.styleIds, testData.token, testAnswersDir, testData.liburl, testData.domain);
+    const task = generateAndSaveSrestAnswers(testData.srestURLs, testAnswersDir, testData.liburl);
     return expect(task().then(E.isRight)).resolves.toBeTruthy();
 }, 1000 * 60 * 10)
 
@@ -35,7 +30,7 @@ const testDebugDir = resolve(__dirname, "test-debug-images");
 
 test("compare", () => {
     expect(fs.existsSync(testAnswersDir)).toBeTruthy();
-    const task = testSrestLibrary(testData.liburl, testData.domain, testData.styleIds, testAnswersDir, testDebugDir, testData.token);
+    const task = testSrestLibrary(testData.liburl, testData.srestURLs, testAnswersDir, testDebugDir);
     return task().then(either => {
         expect(E.isRight(either)).toBeTruthy();
         if (E.isRight(either)) {
@@ -57,11 +52,11 @@ test("impair", () => {
     fs.readdirSync(impairDir).forEach(impairFilename => {
         fs.copyFileSync(resolve(impairDir, impairFilename), resolve(wrongDir, impairFilename));
     });
-    const task = testSrestLibrary(testData.liburl, testData.domain, testData.styleIds, wrongDir, wrongDebugDir, testData.token);
+    const task = testSrestLibrary(testData.liburl, testData.srestURLs, wrongDir, wrongDebugDir);
     return task().then(either => {
         expect(E.isRight(either)).toBeTruthy();
         if (E.isRight(either)) {
-            expect(either.right).toBe(5);
+            expect(either.right).toBe(6);
         }
     })
 }, 1000 * 60 * 10)
