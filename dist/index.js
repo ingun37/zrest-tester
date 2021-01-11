@@ -80,7 +80,8 @@ function streamScreenshots_browser(jsx, hookDomain) {
         return function_1.pipe(ob, fp_ts_rxjs_1.observableEither.chain(page => {
             const events = page_request_emitter_1.streamPageEvents(page, pageurl)({
                 filter: r => r.url().startsWith(hookDomain),
-                alterResponse: () => Option_1.none
+                alterResponse: () => Option_1.none,
+                debugResponse: () => { }
             });
             return stopWhenError(events);
         }), fp_ts_rxjs_1.observableEither.mapLeft(x => x), fp_ts_rxjs_1.observableEither.chain((xxx) => {

@@ -5,7 +5,7 @@
     "url": "https://github.com/ingun37/zrest-tester.git"
   },
   "description": "Test system for zrest files.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -19,7 +19,7 @@
     "@types/uuid": "^8.3.0",
     "fp-ts-rxjs": "^0.6.11",
     "node-fetch": "^2.6.1",
-    "page-request-emitter": "^2.2.1",
+    "page-request-emitter": "2.3.0",
     "react": "^17.0.1",
     "rxjs": "^6.6.3",
     "uuid": "^8.3.2"

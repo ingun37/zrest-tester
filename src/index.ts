@@ -72,7 +72,8 @@ export function streamScreenshots_browser(jsx: JSX.Element, hookDomain: string):
                 observableEither.chain(page => {
                     const events = streamPageEvents(page, pageurl)({
                         filter: r => r.url().startsWith(hookDomain),
-                        alterResponse: () => none
+                        alterResponse: () => none,
+                        debugResponse: () => {}
                     });
                     return stopWhenError(events);
                 }),
