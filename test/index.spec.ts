@@ -22,7 +22,7 @@ const testData: TestDataProvision = testDataProvision;
 
 const testAnswersDir = resolve(__dirname, "test-answers");
 test("save", () => {
-    const task = generateAndSaveSrestAnswers(testData.srestURLs, testAnswersDir, testData.liburl);
+    const task = generateAndSaveSrestAnswers(testData.srestURLs, testAnswersDir, testData.liburl, 1000);
     return expect(task().then(E.isRight)).resolves.toBeTruthy();
 }, 1000 * 60 * 10)
 
@@ -30,7 +30,7 @@ const testDebugDir = resolve(__dirname, "test-debug-images");
 
 test("compare", () => {
     expect(fs.existsSync(testAnswersDir)).toBeTruthy();
-    const task = testSrestLibrary(testData.liburl, testData.srestURLs, testAnswersDir, testDebugDir);
+    const task = testSrestLibrary(testData.liburl, testData.srestURLs, testAnswersDir, testDebugDir, 1000);
     return task().then(either => {
         expect(E.isRight(either)).toBeTruthy();
         if (E.isRight(either)) {
@@ -52,7 +52,7 @@ test("impair", () => {
     fs.readdirSync(impairDir).forEach(impairFilename => {
         fs.copyFileSync(resolve(impairDir, impairFilename), resolve(wrongDir, impairFilename));
     });
-    const task = testSrestLibrary(testData.liburl, testData.srestURLs, wrongDir, wrongDebugDir);
+    const task = testSrestLibrary(testData.liburl, testData.srestURLs, wrongDir, wrongDebugDir, 1000);
     return task().then(either => {
         expect(E.isRight(either)).toBeTruthy();
         if (E.isRight(either)) {

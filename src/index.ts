@@ -73,7 +73,8 @@ export function streamScreenshots_browser(jsx: JSX.Element, hookDomain: string):
                     const events = streamPageEvents(page, pageurl)({
                         filter: r => r.url().startsWith(hookDomain),
                         alterResponse: () => none,
-                        debugResponse: () => {}
+                        debugResponse: () => {
+                        }
                     });
                     return stopWhenError(events);
                 }),
@@ -101,10 +102,10 @@ export function streamScreenshots_browser(jsx: JSX.Element, hookDomain: string):
     )
 }
 
-function streamSrestScreenshots_browser(srests: readonly SRest[], libURL: URL) {
-    const jsx = templateSrest(libURL, srests);
-    return streamScreenshots_browser(jsx, hookDomain)
-}
+const streamSrestScreenshots_browser = pipe(
+    templateSrest,
+    reader.map(jsx => streamScreenshots_browser(jsx, hookDomain))
+);
 
 function mkNewDir(path: string) {
     if (fs.existsSync(path)) {
@@ -136,12 +137,12 @@ function fetchSrests(urls: string[]) {
     return toTaskEither(srestOb)
 }
 
-export function generateAndSaveSrestAnswers(sresturls: string[], destination: string, liburl: URL) {
+export function generateAndSaveSrestAnswers(sresturls: string[], destination: string, libURL: URL, waitTimeMS: number) {
     return runWithBrowser(browser => {
         return pipe(
             fetchSrests(sresturls),
             TE.chain(srests => {
-                const answerBufferOE = streamSrestScreenshots_browser(srests, liburl)(browser);
+                const answerBufferOE = streamSrestScreenshots_browser({srests, libURL, waitTimeMS})(browser);
                 return writeBuffersInLexicographicOrder(destination, answerBufferOE);
             })
         )
@@ -153,14 +154,6 @@ export function generateAndSaveZrestAnswers(libURL: URL, zrestURLs: URL[], desti
         const zrestResults = streamScreenshots_browser(templateZrest(libURL, zrestURLs), hookDomain)(browser);
         return writeBuffersInLexicographicOrder(destination, zrestResults);
     })
-}
-
-function addSlash(str: string): string {
-    if (str.endsWith('/')) {
-        return str;
-    } else {
-        return str + '/';
-    }
 }
 
 export function runWithBrowser<_E, _T>(browserReadingTask: ReaderTaskEither<Browser, _E, _T>) {
@@ -179,6 +172,20 @@ function answerStream(answersDir: string) {
     return from(answerPaths).pipe(map(x => fs.readFileSync(x)));
 }
 
+function decodePossibleBuffer(x: unknown): string {
+    return pipe(
+        x,
+        D.string.decode,
+        either.getOrElse(_ => {
+            if (x instanceof Buffer) {
+                return x.toString('utf8');
+            } else {
+                return "Failed to decode: neither string or Buffer";
+            }
+        })
+    )
+}
+
 export function saveDebugImages(x: Buffer, y: Buffer, index: number, destination: string) {
     const lexi = lexicographic(index);
     const xpath = resolve(destination, lexi + "-x.png");
@@ -192,7 +199,8 @@ export function saveDebugImages(x: Buffer, y: Buffer, index: number, destination
         "--highlight", resolve(destination, lexi + "-highlight.png"),
         "--combined", resolve(destination, lexi + "-combined.png")
     ])
-    console.log({stdout: spawned.stdout, stderr: spawned.stderr});
+
+    console.log({stdout: decodePossibleBuffer(spawned.stdout), stderr: decodePossibleBuffer(spawned.stderr)});
     if (spawned.signal) {
         return E.left("closet-viewer-cv killed due to signal:" + spawned.signal)
     } else if (spawned.status) {
@@ -240,13 +248,13 @@ function compareResultsAndAnswers<_E>(resultEs: ObservableEither<_E, Buffer>, an
     return toTaskEither(testResult);
 }
 
-export function testSrestLibrary(liburl: URL, sresturls: string[], answersDir: string, debugImageDir: string) {
+export function testSrestLibrary(libURL: URL, sresturls: string[], answersDir: string, debugImageDir: string, waitTimeMS: number) {
     return runWithBrowser(browser => {
         return pipe(
             fetchSrests(sresturls),
             taskEither.chain(srests => {
                 return compareResultsAndAnswers(
-                    streamSrestScreenshots_browser(srests, liburl)(browser),
+                    streamSrestScreenshots_browser({srests, libURL, waitTimeMS})(browser),
                     answersDir,
                     debugImageDir
                 );

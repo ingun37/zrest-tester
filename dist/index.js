@@ -81,7 +81,8 @@ function streamScreenshots_browser(jsx, hookDomain) {
             const events = page_request_emitter_1.streamPageEvents(page, pageurl)({
                 filter: r => r.url().startsWith(hookDomain),
                 alterResponse: () => Option_1.none,
-                debugResponse: () => { }
+                debugResponse: () => {
+                }
             });
             return stopWhenError(events);
         }), fp_ts_rxjs_1.observableEither.mapLeft(x => x), fp_ts_rxjs_1.observableEither.chain((xxx) => {
@@ -97,10 +98,7 @@ function streamScreenshots_browser(jsx, hookDomain) {
     }));
 }
 exports.streamScreenshots_browser = streamScreenshots_browser;
-function streamSrestScreenshots_browser(srests, libURL) {
-    const jsx = template_1.templateSrest(libURL, srests);
-    return streamScreenshots_browser(jsx, template_1.hookDomain);
-}
+const streamSrestScreenshots_browser = function_1.pipe(template_1.templateSrest, fp_ts_1.reader.map(jsx => streamScreenshots_browser(jsx, template_1.hookDomain)));
 function mkNewDir(path) {
     if (fs_1.default.existsSync(path)) {
         fs_1.default.rmdirSync(path, { recursive: true });
@@ -120,10 +118,10 @@ function fetchSrests(urls) {
     const srestOb = rxjs_1.from(urls).pipe(operators_1.map(fetchSrest), operators_1.concatMap(ObservableEither_1.fromTaskEither), operators_1.toArray(), operators_1.map(fp_ts_1.either.sequenceArray));
     return ObservableEither_1.toTaskEither(srestOb);
 }
-function generateAndSaveSrestAnswers(sresturls, destination, liburl) {
+function generateAndSaveSrestAnswers(sresturls, destination, libURL, waitTimeMS) {
     return runWithBrowser(browser => {
         return function_1.pipe(fetchSrests(sresturls), TE.chain(srests => {
-            const answerBufferOE = streamSrestScreenshots_browser(srests, liburl)(browser);
+            const answerBufferOE = streamSrestScreenshots_browser({ srests, libURL, waitTimeMS })(browser);
             return writeBuffersInLexicographicOrder(destination, answerBufferOE);
         }));
     });
@@ -155,6 +153,16 @@ function answerStream(answersDir) {
     const answerPaths = fs_1.default.readdirSync(answersDir).filter(x => x.endsWith(".png")).map(x => path_1.resolve(answersDir, x));
     return rxjs_1.from(answerPaths).pipe(operators_1.map(x => fs_1.default.readFileSync(x)));
 }
+function decodePossibleBuffer(x) {
+    return function_1.pipe(x, D.string.decode, fp_ts_1.either.getOrElse(_ => {
+        if (x instanceof Buffer) {
+            return x.toString('utf8');
+        }
+        else {
+            return "Failed to decode: neither string or Buffer";
+        }
+    }));
+}
 function saveDebugImages(x, y, index, destination) {
     const lexi = lexicographic(index);
     const xpath = path_1.resolve(destination, lexi + "-x.png");
@@ -168,7 +176,7 @@ function saveDebugImages(x, y, index, destination) {
         "--highlight", path_1.resolve(destination, lexi + "-highlight.png"),
         "--combined", path_1.resolve(destination, lexi + "-combined.png")
     ]);
-    console.log({ stdout: spawned.stdout, stderr: spawned.stderr });
+    console.log({ stdout: decodePossibleBuffer(spawned.stdout), stderr: decodePossibleBuffer(spawned.stderr) });
     if (spawned.signal) {
         return E.left("closet-viewer-cv killed due to signal:" + spawned.signal);
     }
@@ -208,10 +216,10 @@ function compareResultsAndAnswers(resultEs, answersDir, debugImageDir) {
     const testResult = rxjs_1.zip(resultEs, answers).pipe(operators_1.map(Tup.sequence(E.either)), pairsOb => reduceTestResult(debugImageDir, pairsOb));
     return ObservableEither_1.toTaskEither(testResult);
 }
-function testSrestLibrary(liburl, sresturls, answersDir, debugImageDir) {
+function testSrestLibrary(libURL, sresturls, answersDir, debugImageDir, waitTimeMS) {
     return runWithBrowser(browser => {
         return function_1.pipe(fetchSrests(sresturls), fp_ts_1.taskEither.chain(srests => {
-            return compareResultsAndAnswers(streamSrestScreenshots_browser(srests, liburl)(browser), answersDir, debugImageDir);
+            return compareResultsAndAnswers(streamSrestScreenshots_browser({ srests, libURL, waitTimeMS })(browser), answersDir, debugImageDir);
         }));
     });
 }

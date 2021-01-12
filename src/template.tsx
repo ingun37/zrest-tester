@@ -48,44 +48,49 @@ recurse([${literalize(zrestURLs)}])
     </div>
 );
 
-function makeRecursiveTemplateJSCode(srests: readonly SRest[]): string {
+function makeRecursiveTemplateJSCode(srests: readonly SRest[], waitTimeMS:number): string {
     if (srests.length === 0) {
         return `fetch("${hookDomain}", { method: "DELETE", });`
     } else {
         return `
         console.log("loading srest, #", ${srests.length})
-        closet.viewer.loadSeparatedZRest(${JSON.stringify(srests[0])}, (x)=>{}).then(()=>{
-          return new Promise(done => {
-            setTimeout(done, 10000);
+        closet.viewer.loadSeparatedZRest(${JSON.stringify(srests[0])}, (x)=>{}, 0, ()=>{
+          new Promise(done => {
+            setTimeout(done, ${waitTimeMS});
+          }).then(()=>{
+            return fetch("${hookDomain}", {
+              method: "POST",
+              body: JSON.stringify({
+                images: closet.viewer.capturePrincipleViews(),
+              }),
+            });
+          }).then(()=>{
+            ${makeRecursiveTemplateJSCode(srests.slice(1), waitTimeMS)}
           })
-        }).then(()=>{
-          return fetch("${hookDomain}", {
-            method: "POST",
-            body: JSON.stringify({
-              images: closet.viewer.capturePrincipleViews(),
-            }),
-          });
-        }).then(()=>{
-          ${makeRecursiveTemplateJSCode(srests.slice(1))}
         })`
     }
 }
 
-function makeTemplateJSCode(libURL: U.URL, srests: readonly SRest[]): string {
+function makeTemplateJSCode(srests: readonly SRest[], waitTimeMS:number): string {
     const initCode = `closet.viewer.init({
   element: "target",
   width: 512,
   height: 512,
   stats: true,
 });`;
-    return initCode + makeRecursiveTemplateJSCode(srests);
+    return initCode + makeRecursiveTemplateJSCode(srests, waitTimeMS);
 }
 
-export const templateSrest = (libURL: U.URL, srests: readonly SRest[]) => (
+export type SRestTemplateConfig = {
+    libURL: U.URL;
+    srests: readonly SRest[];
+    waitTimeMS:number;
+}
+export const templateSrest = ({libURL, srests, waitTimeMS}:SRestTemplateConfig) => (
     <div>
         <div id="target" style={{width: 512, height: 512}}/>
         <script type='text/javascript' src={libURL.toString()}/>
-        <script dangerouslySetInnerHTML={{__html: makeTemplateJSCode(libURL, srests)}}>
+        <script dangerouslySetInnerHTML={{__html: makeTemplateJSCode(srests, waitTimeMS)}}>
         </script>
     </div>
 );
