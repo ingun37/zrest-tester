@@ -32,7 +32,7 @@ function recurse(zrestURLs) {
           await fetch("${hookDomain}", {
             method: "POST",
             body: JSON.stringify({
-              images: closet.viewer.capturePrincipleViews(),
+              images: await closet.viewer.capturePrincipleViews(),
             }),
           });
           recurse(zrestURLs.slice(1))
@@ -58,10 +58,12 @@ function makeRecursiveTemplateJSCode(srests: readonly SRest[], waitTimeMS:number
           new Promise(done => {
             setTimeout(done, ${waitTimeMS});
           }).then(()=>{
+            return closet.viewer.capturePrincipleViews();
+          }).then((images)=>{
             return fetch("${hookDomain}", {
               method: "POST",
               body: JSON.stringify({
-                images: closet.viewer.capturePrincipleViews(),
+                images,
               }),
             });
           }).then(()=>{

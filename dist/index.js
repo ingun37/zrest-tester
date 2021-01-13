@@ -134,14 +134,6 @@ function generateAndSaveZrestAnswers(libURL, zrestURLs, destination) {
     });
 }
 exports.generateAndSaveZrestAnswers = generateAndSaveZrestAnswers;
-function addSlash(str) {
-    if (str.endsWith('/')) {
-        return str;
-    }
-    else {
-        return str + '/';
-    }
-}
 function runWithBrowser(browserReadingTask) {
     return TaskEither_1.bracket(TaskEither_1.tryCatchK(puppeteer_1.default.launch.bind(puppeteer_1.default), console.error)({ args: ["--no-sandbox", "--disable-web-security"] }), RTE.mapLeft(console.error)(browserReadingTask), (browser) => {
         console.log("Releasing browser ...");
