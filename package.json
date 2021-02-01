@@ -11,6 +11,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "install": "pip3 install \"closet-viewer-cv==0.0.6\""
   },
+  "files": [
+    "dist"
+  ],
   "keywords": [],
   "author": "Ingun Jon",
   "license": "ISC",
