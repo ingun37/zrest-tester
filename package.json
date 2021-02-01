@@ -5,11 +5,11 @@
     "url": "https://github.com/ingun37/zrest-tester.git"
   },
   "description": "Test system for zrest files.",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "install": "pip3 install \"closet-viewer-cv==0.0.5\""
+    "install": "pip3 install \"closet-viewer-cv==0.0.6\""
   },
   "keywords": [],
   "author": "Ingun Jon",
