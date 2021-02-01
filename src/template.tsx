@@ -1,9 +1,9 @@
 import React from "react";
 import * as U from "url";
-import {SRest} from "./types";
 
-const literalize = (urls: U.URL[]): string => urls.map(x => x.toString()).map(x => `"${x}"`).join(", ")
 export const hookDomain = "http://screenshotrequest.clo";
+
+
 export const templateZrest = (libURL: U.URL, zrestURLs: U.URL[]) => (
     <div>
         <div id="target" style={{width: 512, height: 512}}/>
@@ -16,83 +16,69 @@ closet.viewer.init({
   height: 512,
   stats: true,
 });
-
-function recurse(zrestURLs) {
-  if (zrestURLs.length === 0) {
-    fetch("http://screenshotrequest.clo", {
-      method: "DELETE",
-    });
-  } else {
-    console.log("loading zrest url", zrestURLs[0])
-    closet.viewer.loadZrestUrl(
-      zrestURLs[0],
-      function (x) {},
-      function (x) {
-        (async function () {
-          await fetch("${hookDomain}", {
-            method: "POST",
-            body: JSON.stringify({
-              images: await closet.viewer.capturePrincipleViews(),
-            }),
-          });
-          recurse(zrestURLs.slice(1))
-        })();
-      }
-    );
-  }
-}
-recurse([${literalize(zrestURLs)}])
+${makeRecursiveZrestTemplateJSCode(zrestURLs.map(x => x.toString()))}
     `
         }}>
         </script>
     </div>
 );
 
-function makeRecursiveTemplateJSCode(srests: readonly SRest[], waitTimeMS:number): string {
-    if (srests.length === 0) {
+
+function makeRecursiveZrestTemplateJSCode(zrestURLs: readonly string[]): string {
+    if (zrestURLs.length === 0) {
         return `fetch("${hookDomain}", { method: "DELETE", });`
     } else {
         return `
-        console.log("loading srest, #", ${srests.length})
-        closet.viewer.loadSeparatedZRest(${JSON.stringify(srests[0])}, (x)=>{}, 0, ()=>{
-          new Promise(done => {
-            setTimeout(done, ${waitTimeMS});
-          }).then(()=>{
-            return closet.viewer.capturePrincipleViews();
-          }).then((images)=>{
-            return fetch("${hookDomain}", {
+        console.log("ZREST TEST START", "${zrestURLs[0]}")
+        closet.viewer.loadZrestWithoutRendering("${zrestURLs[0]}")
+          .then(()=>closet.viewer.capturePrincipleViews())
+          .then((images)=>fetch("${hookDomain}", {
               method: "POST",
-              body: JSON.stringify({
-                images,
-              }),
-            });
-          }).then(()=>{
-            ${makeRecursiveTemplateJSCode(srests.slice(1), waitTimeMS)}
-          })
-        })`
+              body: JSON.stringify({ images, }),
+            }))
+          .then(()=>{
+            ${makeRecursiveZrestTemplateJSCode(zrestURLs.slice(1))}
+          })`
     }
 }
 
-function makeTemplateJSCode(srests: readonly SRest[], waitTimeMS:number): string {
+function makeRecursiveTemplateJSCode(srestURLs: readonly string[]): string {
+    if (srestURLs.length === 0) {
+        return `fetch("${hookDomain}", { method: "DELETE", });`
+    } else {
+        return `
+        console.log("SREST TEST START", "${srestURLs[0]}")
+        closet.viewer.loadSrestWithoutRendering("${srestURLs[0]}")
+          .then(()=>closet.viewer.capturePrincipleViews())
+          .then((images)=>fetch("${hookDomain}", {
+              method: "POST",
+              body: JSON.stringify({ images, }),
+            }))
+          .then(()=>{
+            ${makeRecursiveTemplateJSCode(srestURLs.slice(1))}
+          })`
+    }
+}
+
+function makeTemplateJSCode(srestURLs: readonly string[]): string {
     const initCode = `closet.viewer.init({
   element: "target",
   width: 512,
   height: 512,
   stats: true,
 });`;
-    return initCode + makeRecursiveTemplateJSCode(srests, waitTimeMS);
+    return initCode + makeRecursiveTemplateJSCode(srestURLs);
 }
 
 export type SRestTemplateConfig = {
     libURL: U.URL;
-    srests: readonly SRest[];
-    waitTimeMS:number;
+    srestURLs: readonly string[];
 }
-export const templateSrest = ({libURL, srests, waitTimeMS}:SRestTemplateConfig) => (
+export const templateSrest = ({libURL, srestURLs}:SRestTemplateConfig) => (
     <div>
         <div id="target" style={{width: 512, height: 512}}/>
         <script type='text/javascript' src={libURL.toString()}/>
-        <script dangerouslySetInnerHTML={{__html: makeTemplateJSCode(srests, waitTimeMS)}}>
+        <script dangerouslySetInnerHTML={{__html: makeTemplateJSCode(srestURLs)}}>
         </script>
     </div>
 );

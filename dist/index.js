@@ -32,9 +32,6 @@ const D = __importStar(require("io-ts/Decoder"));
 const operators_1 = require("rxjs/operators");
 const function_1 = require("fp-ts/function");
 const rxjs_1 = require("rxjs");
-const node_fetch_1 = __importDefault(require("node-fetch"));
-const types_1 = require("./types");
-const TE = __importStar(require("fp-ts/TaskEither"));
 const TaskEither_1 = require("fp-ts/TaskEither");
 const RTE = __importStar(require("fp-ts/ReaderTaskEither"));
 const fp_ts_rxjs_1 = require("fp-ts-rxjs");
@@ -113,17 +110,10 @@ function writeBuffersInLexicographicOrder(destination, buffers) {
     }, E.right(mkNewDir(destination))));
     return ObservableEither_1.toTaskEither(writeTask);
 }
-const fetchSrest = (url) => () => node_fetch_1.default(url).then(x => x.text()).then(JSON.parse).then(types_1.D_SRest.decode);
-function fetchSrests(urls) {
-    const srestOb = rxjs_1.from(urls).pipe(operators_1.map(fetchSrest), operators_1.concatMap(ObservableEither_1.fromTaskEither), operators_1.toArray(), operators_1.map(fp_ts_1.either.sequenceArray));
-    return ObservableEither_1.toTaskEither(srestOb);
-}
-function generateAndSaveSrestAnswers(sresturls, destination, libURL, waitTimeMS) {
+function generateAndSaveSrestAnswers(srestURLs, destination, libURL) {
     return runWithBrowser(browser => {
-        return function_1.pipe(fetchSrests(sresturls), TE.chain(srests => {
-            const answerBufferOE = streamSrestScreenshots_browser({ srests, libURL, waitTimeMS })(browser);
-            return writeBuffersInLexicographicOrder(destination, answerBufferOE);
-        }));
+        const answerBufferOE = streamSrestScreenshots_browser({ srestURLs, libURL })(browser);
+        return writeBuffersInLexicographicOrder(destination, answerBufferOE);
     });
 }
 exports.generateAndSaveSrestAnswers = generateAndSaveSrestAnswers;
@@ -208,11 +198,9 @@ function compareResultsAndAnswers(resultEs, answersDir, debugImageDir) {
     const testResult = rxjs_1.zip(resultEs, answers).pipe(operators_1.map(Tup.sequence(E.either)), pairsOb => reduceTestResult(debugImageDir, pairsOb));
     return ObservableEither_1.toTaskEither(testResult);
 }
-function testSrestLibrary(libURL, sresturls, answersDir, debugImageDir, waitTimeMS) {
+function testSrestLibrary(libURL, srestURLs, answersDir, debugImageDir) {
     return runWithBrowser(browser => {
-        return function_1.pipe(fetchSrests(sresturls), fp_ts_1.taskEither.chain(srests => {
-            return compareResultsAndAnswers(streamSrestScreenshots_browser({ srests, libURL, waitTimeMS })(browser), answersDir, debugImageDir);
-        }));
+        return compareResultsAndAnswers(streamSrestScreenshots_browser({ srestURLs, libURL })(browser), answersDir, debugImageDir);
     });
 }
 exports.testSrestLibrary = testSrestLibrary;

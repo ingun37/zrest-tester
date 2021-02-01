@@ -6,14 +6,10 @@ import {Either, isLeft} from "fp-ts/Either";
 import * as A from "fp-ts/Array";
 import * as D from "io-ts/Decoder";
 
-import {concatMap, map, reduce, toArray} from "rxjs/operators";
+import {map, reduce} from "rxjs/operators";
 import {pipe} from "fp-ts/function";
 import {from, Observable, zip} from "rxjs";
-import fetch from "node-fetch";
-
-import {D_SRest, SRest} from "./types";
-import * as TE from "fp-ts/TaskEither";
-import {bracket, TaskEither, tryCatchK} from "fp-ts/TaskEither";
+import {bracket, tryCatchK} from "fp-ts/TaskEither";
 import * as RTE from "fp-ts/ReaderTaskEither";
 import {ReaderTaskEither} from "fp-ts/ReaderTaskEither";
 
@@ -26,7 +22,7 @@ import {spawnSync} from "child_process";
 import {fromTaskEither, ObservableEither, toTaskEither} from "fp-ts-rxjs/lib/ObservableEither";
 import * as Tup from "fp-ts/Tuple";
 import {ReaderObservableEither} from "fp-ts-rxjs/lib/ReaderObservableEither";
-import {either, reader, taskEither} from "fp-ts";
+import {either, reader} from "fp-ts";
 import {none} from "fp-ts/Option";
 
 
@@ -125,27 +121,10 @@ function writeBuffersInLexicographicOrder<_E>(destination: string, buffers: Obse
     return toTaskEither(writeTask);
 }
 
-const fetchSrest = (url: string): TaskEither<unknown, SRest> => () => fetch(url).then(x => x.text()).then(JSON.parse).then(D_SRest.decode);
-
-function fetchSrests(urls: string[]) {
-    const srestOb = from(urls).pipe(
-        map(fetchSrest),
-        concatMap(fromTaskEither),
-        toArray(),
-        map(either.sequenceArray),
-    )
-    return toTaskEither(srestOb)
-}
-
-export function generateAndSaveSrestAnswers(sresturls: string[], destination: string, libURL: URL, waitTimeMS: number) {
+export function generateAndSaveSrestAnswers(srestURLs: string[], destination: string, libURL: URL) {
     return runWithBrowser(browser => {
-        return pipe(
-            fetchSrests(sresturls),
-            TE.chain(srests => {
-                const answerBufferOE = streamSrestScreenshots_browser({srests, libURL, waitTimeMS})(browser);
-                return writeBuffersInLexicographicOrder(destination, answerBufferOE);
-            })
-        )
+        const answerBufferOE = streamSrestScreenshots_browser({srestURLs, libURL})(browser);
+        return writeBuffersInLexicographicOrder(destination, answerBufferOE);
     });
 }
 
@@ -248,18 +227,13 @@ function compareResultsAndAnswers<_E>(resultEs: ObservableEither<_E, Buffer>, an
     return toTaskEither(testResult);
 }
 
-export function testSrestLibrary(libURL: URL, sresturls: string[], answersDir: string, debugImageDir: string, waitTimeMS: number) {
+export function testSrestLibrary(libURL: URL, srestURLs: string[], answersDir: string, debugImageDir: string) {
     return runWithBrowser(browser => {
-        return pipe(
-            fetchSrests(sresturls),
-            taskEither.chain(srests => {
-                return compareResultsAndAnswers(
-                    streamSrestScreenshots_browser({srests, libURL, waitTimeMS})(browser),
-                    answersDir,
-                    debugImageDir
-                );
-            }),
-        )
+        return compareResultsAndAnswers(
+            streamSrestScreenshots_browser({srestURLs, libURL})(browser),
+            answersDir,
+            debugImageDir
+        );
     })
 }
 
